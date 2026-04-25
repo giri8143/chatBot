@@ -482,9 +482,6 @@
           oninput="resize(this)"
         ></textarea>
         <div class="btns">
-          <button class="icon-btn" title="Live weather" onclick="getWeather()">
-            &#127780;&#65039;
-          </button>
           <button
             class="icon-btn"
             title="Upload file"
@@ -525,13 +522,6 @@
     </div>
 
     <script>
-      // ═══════════════════════════════
-      //  YOUR API KEYS
-      // ═══════════════════════════════
-      var GROQ_KEY = "YOUR_GROQ_KEY_HERE";
-      var WEATHER_KEY = "YOUR_WEATHER_KEY_HERE";
-      // ═══════════════════════════════
-
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
@@ -577,7 +567,6 @@
           "Tips to reduce stress",
         ],
       ];
-
       var EMOJIS = [
         "✍️",
         "💡",
@@ -605,14 +594,13 @@
         var box = document.getElementById("sugBox");
         if (!box) return;
         var html = "";
-        for (var i = 0; i < items.length; i++) {
+        for (var i = 0; i < items.length; i++)
           html +=
             '<button class="sug" onclick="sug(this)">' +
             EMOJIS[i] +
             " " +
             items[i] +
             "</button>";
-        }
         box.innerHTML = html;
       }
 
@@ -632,19 +620,16 @@
         renderSugs(ALL_SUGS[0]);
         sugTimer = setInterval(rotateSugs, 4000);
       }
-
       function stopRot() {
         clearInterval(sugTimer);
         sugTimer = null;
       }
-
       startRot();
 
       function showStop() {
         document.getElementById("sendBtn").style.display = "none";
         document.getElementById("stopBtn").style.display = "flex";
       }
-
       function showSend() {
         document.getElementById("sendBtn").style.display = "flex";
         document.getElementById("stopBtn").style.display = "none";
@@ -665,14 +650,12 @@
         el.style.height = "auto";
         el.style.height = Math.min(el.scrollHeight, 120) + "px";
       }
-
       function onKey(e) {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           send();
         }
       }
-
       function sug(btn) {
         var txt = btn.textContent.replace(/^./, "").trim();
         document.getElementById("inp").value = txt;
@@ -685,8 +668,7 @@
         stopRot();
         document.getElementById("previews").innerHTML = "";
         document.getElementById("chatArea").innerHTML =
-          '<div class="welcome" id="welcome">' +
-          '<div class="welcome-avatar">&#10022;</div>' +
+          '<div class="welcome" id="welcome"><div class="welcome-avatar">&#10022;</div>' +
           "<h1>Hi, I'm <span>NexusAI</span>.<br/>How can I help you today?</h1>" +
           "<p>Ask me anything — I can answer questions, analyze images, read PDFs, and more.</p>" +
           '<div class="suggestions" id="sugBox"></div></div>';
@@ -781,7 +763,6 @@
         if (t) t.remove();
       }
 
-      // File handling
       async function onFiles(e) {
         for (var i = 0; i < e.target.files.length; i++)
           await addFile(e.target.files[i]);
@@ -863,7 +844,7 @@
         return t;
       }
 
-      // Weather
+      // ── Weather via Netlify Function ──
       function extractCity(txt) {
         var m = txt.match(
           /(?:in|at|for|of)\s+([A-Za-z][A-Za-z ]{1,25})(?:\?|$)/i,
@@ -876,56 +857,54 @@
         return null;
       }
 
-      async function callGroqAPI(messages) {
-        abortCtrl = new AbortController();
-        var r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + GROQ_KEY,
-          },
-          body: JSON.stringify({
-            model: "llama-3.1-8b-instant",
-            messages: messages,
-            max_tokens: 2048,
-          }),
-          signal: abortCtrl.signal,
-        });
-        var d = await r.json();
-        if (!r.ok) throw new Error(d.error ? d.error.message : "API Error");
-        return d.choices[0].message.content;
-      }
-
-      async function fetchWeather(url, userQ) {
+      async function fetchWeatherAndRespond(params, userQ) {
         try {
-          var r = await fetch(url);
+          abortCtrl = new AbortController();
+          var r = await fetch(
+            "/.netlify/functions/weather?" + new URLSearchParams(params),
+            {
+              signal: abortCtrl.signal,
+            },
+          );
           var d = await r.json();
-          if (!r.ok) throw new Error(d.message || "City not found");
+          if (!r.ok) throw new Error(d.error || "City not found");
+
           var ctx =
             'User asked: "' +
             userQ +
             '". Live weather - Location: ' +
             d.name +
             ", " +
-            d.sys.country +
+            d.country +
             ". Condition: " +
-            d.weather[0].description +
+            d.description +
             ". Temp: " +
-            d.main.temp +
+            d.temp +
             "C (feels like " +
-            d.main.feels_like +
+            d.feels_like +
             "C)." +
             " Humidity: " +
-            d.main.humidity +
+            d.humidity +
             "%. Wind: " +
-            d.wind.speed +
+            d.wind_speed +
             " m/s." +
             " Give a short friendly weather summary with outfit/activity suggestions.";
-          var msgs = [
-            { role: "system", content: SYS },
-            { role: "user", content: ctx },
-          ];
-          var reply = await callGroqAPI(msgs);
+
+          var chatR = await fetch("/.netlify/functions/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                { role: "system", content: SYS },
+                { role: "user", content: ctx },
+              ],
+              max_tokens: 1024,
+            }),
+            signal: abortCtrl.signal,
+          });
+          var chatD = await chatR.json();
+          var reply = chatD.choices[0].message.content;
           chatHistory.push({ role: "user", content: ctx });
           chatHistory.push({ role: "assistant", content: reply });
           removeTyping();
@@ -942,34 +921,17 @@
 
       async function getWeather(userQ) {
         userQ = userQ || "What is the weather like right now?";
-        if (!WEATHER_KEY || WEATHER_KEY.indexOf("PASTE") !== -1) {
-          alert("Add your OpenWeatherMap key!");
-          return;
-        }
         addMsg("user", userQ);
         addTyping();
         showStop();
         var city = extractCity(userQ);
         if (city) {
-          await fetchWeather(
-            "https://api.openweathermap.org/data/2.5/weather?q=" +
-              encodeURIComponent(city) +
-              "&appid=" +
-              WEATHER_KEY +
-              "&units=metric",
-            userQ,
-          );
+          await fetchWeatherAndRespond({ city: city }, userQ);
           return;
         }
         if (cachedCoords) {
-          await fetchWeather(
-            "https://api.openweathermap.org/data/2.5/weather?lat=" +
-              cachedCoords.lat +
-              "&lon=" +
-              cachedCoords.lon +
-              "&appid=" +
-              WEATHER_KEY +
-              "&units=metric",
+          await fetchWeatherAndRespond(
+            { lat: cachedCoords.lat, lon: cachedCoords.lon },
             userQ,
           );
           return;
@@ -980,14 +942,8 @@
               lat: pos.coords.latitude,
               lon: pos.coords.longitude,
             };
-            await fetchWeather(
-              "https://api.openweathermap.org/data/2.5/weather?lat=" +
-                cachedCoords.lat +
-                "&lon=" +
-                cachedCoords.lon +
-                "&appid=" +
-                WEATHER_KEY +
-                "&units=metric",
+            await fetchWeatherAndRespond(
+              { lat: cachedCoords.lat, lon: cachedCoords.lon },
               userQ,
             );
           },
@@ -999,23 +955,15 @@
         );
       }
 
-      // Send
+      // ── Chat via Netlify Function ──
       async function send() {
-        if (!GROQ_KEY || GROQ_KEY.indexOf("PASTE") !== -1) {
-          alert("Add your Groq API key!");
-          return;
-        }
         var inp = document.getElementById("inp");
         var txt = inp.value.trim();
         if (!txt && pending.length === 0) return;
 
         var weatherRegex =
           /weather|temperature|temp|forecast|raining|sunny|cloudy|humidity/i;
-        if (
-          weatherRegex.test(txt) &&
-          WEATHER_KEY &&
-          WEATHER_KEY.indexOf("PASTE") === -1
-        ) {
+        if (weatherRegex.test(txt)) {
           inp.value = "";
           inp.style.height = "auto";
           await getWeather(txt);
@@ -1071,14 +1019,13 @@
           var imgFiles = files.filter(function (f) {
             return f.type === "image";
           });
-          for (var i = 0; i < imgFiles.length; i++) {
+          for (var i = 0; i < imgFiles.length; i++)
             msgContent.push({
               type: "image_url",
               image_url: {
                 url: "data:" + imgFiles[i].mime + ";base64," + imgFiles[i].b64,
               },
             });
-          }
           msgContent.push({
             type: "text",
             text: ctx || "Describe this image.",
@@ -1094,78 +1041,43 @@
           var model = hasImg
             ? "llama-3.2-11b-vision-preview"
             : "llama-3.1-8b-instant";
-          console.log("=== NexusAI Request ===");
-          console.log("Model:", model);
-          console.log("Messages sent:", chatHistory.length);
 
-          var r = await fetch(
-            "https://api.groq.com/openai/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: "Bearer " + GROQ_KEY,
-              },
-              body: JSON.stringify({
-                model: model,
-                messages: [{ role: "system", content: SYS }].concat(
-                  chatHistory,
-                ),
-                max_tokens: 2048,
-              }),
-              signal: abortCtrl.signal,
-            },
-          );
-
-          console.log("HTTP Status:", r.status, r.statusText);
-          console.log(
-            "Rate Limit - Requests Remaining:",
-            r.headers.get("x-ratelimit-remaining-requests"),
-          );
-          console.log(
-            "Rate Limit - Tokens Remaining:",
-            r.headers.get("x-ratelimit-remaining-tokens"),
-          );
-          console.log(
-            "Rate Limit - Reset Requests:",
-            r.headers.get("x-ratelimit-reset-requests"),
-          );
-          console.log(
-            "Rate Limit - Reset Tokens:",
-            r.headers.get("x-ratelimit-reset-tokens"),
-          );
+          var r = await fetch("/.netlify/functions/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: model,
+              messages: [{ role: "system", content: SYS }].concat(chatHistory),
+              max_tokens: 2048,
+            }),
+            signal: abortCtrl.signal,
+          });
 
           var d = await r.json();
-          console.log("Response JSON:", JSON.stringify(d));
-
           if (!r.ok) {
             var errMsg = d.error ? d.error.message : "Unknown error";
-            console.error("API Error:", errMsg);
             if (r.status === 429) {
-              console.warn("RATE LIMIT HIT - You have exceeded your quota!");
               removeTyping();
               addMsg(
                 "bot",
-                "Rate limit exceeded. Please wait a minute and try again.",
+                "⚠️ Rate limit exceeded. Please wait a minute and try again.",
               );
             } else if (r.status === 401) {
-              console.warn("INVALID API KEY");
               removeTyping();
-              addMsg("bot", "Invalid API key. Please check your Groq key.");
-            } else {
-              throw new Error(errMsg);
-            }
+              addMsg(
+                "bot",
+                "⚠️ Invalid API key. Please check your Groq key in Netlify environment variables.",
+              );
+            } else throw new Error(errMsg);
             return;
           }
 
           var reply = d.choices[0].message.content;
-          console.log("Reply received, length:", reply.length);
           chatHistory.push({ role: "assistant", content: reply });
           removeTyping();
           addMsg("bot", reply);
         } catch (e) {
           if (e.name === "AbortError") return;
-          console.error("Fetch error:", e.message);
           removeTyping();
           addMsg("bot", "Error: " + e.message);
         } finally {

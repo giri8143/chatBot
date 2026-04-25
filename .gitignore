@@ -1,3 +1,4 @@
-*.env
 .env
-secrets.js
+node_moduless
+# Local Netlify folder
+.netlify
